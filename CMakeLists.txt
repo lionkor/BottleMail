@@ -5,7 +5,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wextra -Weverything -Wno-c++98
 
 project(BottleMail)
 
-add_executable(${CMAKE_PROJECT_NAME} client_main.cpp)
+add_executable(${CMAKE_PROJECT_NAME} client_main.cpp
+    message.cpp
+)
 
 target_link_libraries(${CMAKE_PROJECT_NAME} 
     boost_iostreams 
@@ -17,7 +19,10 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 project(BottleMailServer)
 
-add_executable(${CMAKE_PROJECT_NAME} server_main.cpp)
+add_executable(${CMAKE_PROJECT_NAME} server_main.cpp
+    message.cpp
+    message_database.cpp
+)
 
 target_link_libraries(${CMAKE_PROJECT_NAME} 
     boost_iostreams 
