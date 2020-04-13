@@ -6,6 +6,7 @@ bottle::message_database::message_database() {
 }
 
 void bottle::message_database::put(const bottle::message& msg) {
+    /*
     report("inserting " << msg.body());
     scoped_lock _lock(m_mutex);
     auto        iter = m_messages.find(msg.receiver());
@@ -20,7 +21,7 @@ void bottle::message_database::put(const bottle::message& msg) {
         } else {
             ASSERT_NOT_REACHABLE();
         }
-    }
+    }*/
 }
 
 vector<bottle::message> bottle::message_database::get(const std::string& recv) {

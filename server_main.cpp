@@ -5,6 +5,8 @@
 
 namespace bottle {
 
+typedef boost::container::map<std::string, tcp::socket> socket_map;
+
 class tcp_connection
     : public boost::enable_shared_from_this<bottle::tcp_connection>
 {
@@ -12,84 +14,39 @@ private:
     tcp::socket              m_socket;
     boost::array<char, 4096> m_buffer;
     bottle::message_database m_db;
+    mutexed<socket_map>&     m_socket_map;
 
-    tcp_connection(asio::io_context& io)
-        : m_socket(io) {
+    tcp_connection(asio::io_context& io, mutexed<socket_map>& socket_map)
+        : m_socket(io)
+        , m_socket_map(socket_map) {
     }
 
-    void send_ack() {
-        bottle::message ack(bottle::message::ACKNOWLEDGE, "", "", "");
-        boost::asio::write(m_socket, boost::asio::buffer(ack.to_string()));
-    }
-
-    void handle_get_message(bottle::message& initial_request) {
-        assert(initial_request.purpose() == bottle::message::GET_MESSAGE);
-
-        auto        vector = m_db.get(initial_request.sender());
-        std::size_t index  = 0;
-
-        array<char, 4096> buf;
-        for (;;) {
-            bottle::message request(bottle::message::EOT, "", "", "");
-            auto            len = m_socket.read_some(boost::asio::buffer(buf));
-            request             = bottle::message::from_string(std::string(buf.data(), len));
-            if (request.purpose() == bottle::message::EOT) {
-                report("EOT");
-                break;
-            } else if (request.purpose() == bottle::message::GET_MESSAGE) {
-                report("GET_MESSAGE!");
-                if (index >= vector.size()) {
-                    bottle::message err_msg(bottle::message::EOT, "no more messages found (start a new query to get all messages again)", "", "");
-                    boost::asio::write(m_socket, boost::asio::buffer(err_msg.to_string()));
-                } else {
-                    bottle::message response = vector.at(index);
-                    boost::asio::write(m_socket, boost::asio::buffer(response.to_string()));
-                }
-                ++index;
-            } else {
-                ASSERT_NOT_REACHABLE();
-            }
+    void handle_read(boost::system::error_code error,
+        size_t                                 len) {
+        if (error) {
+            report_error(error.message());
+            return;
         }
-        send_ack();
-    }
-
-    void handle_request(bottle::message& request) {
-        switch (request.purpose()) {
-        case bottle::message::SEND_MESSAGE:
-            // new message to store!
-            m_db.put(request);
-            send_ack();
-            break;
-        case bottle::message::GET_MESSAGE:
-            handle_get_message(request);
-            break;
-        case bottle::message::ACKNOWLEDGE:
-            break;
-        case bottle::message::EOT:
-            break;
-        default:
-            ASSERT_NOT_REACHABLE();
+        std::string first_msg(m_buffer.data(), len);
+        auto        always_yes = [&](auto str1, auto str2) {
+            return true;
+        };
+        bool ok = identify_serverside(m_socket, first_msg, always_yes);
+        report(ok);
+        if (!ok) {
+            return;
         }
-    }
-
-    void handle_read(boost::system::error_code /*error*/, size_t bytes_transferred) {
-        report("received " << bytes_transferred << " bytes from " << m_socket.native_handle() << ": ");
-        report("_" << std::string(m_buffer.data(), bytes_transferred) << "_");
-
-        bottle::message request = bottle::message::from_string(std::string(m_buffer.data(), bytes_transferred));
-
-        try {
-            handle_request(request);
-        } catch (std::exception& e) {
-            report_error(e.what() << " somewhere in handle_request");
-        }
+        std::string connect_with = conversation_find_serverside_init(m_socket);
+        // find the person or don't
+        bool was_found = true;
+        conversation_find_serverside_finalize(m_socket, was_found);
     }
 
 public:
     typedef boost::shared_ptr<tcp_connection> pointer;
 
-    static pointer create(asio::io_context& io) {
-        return pointer(new tcp_connection(io));
+    static pointer create(asio::io_context& io, mutexed<socket_map>& socket_map) {
+        return pointer(new tcp_connection(io, socket_map));
     }
 
     tcp::socket& socket() {
